@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package transaction;
+
+option go_package = "github.com/klym/payment-system/proto/transaction";
+
+import "google/protobuf/timestamp.proto";
+
+service TransactionService {
+  rpc CreateTransfer(CreateTransferRequest) returns (CreateTransferResponse);
+  rpc GetTransaction(GetTransactionRequest) returns (Transaction);
+  rpc GetTransactionsByAccount(GetTransactionsByAccountRequest) returns (TransactionList);
+}
+
+message CreateTransferRequest {
+  string idempotency_key = 1; // client generated
+  string from_account_id = 2;
+  string to_account_id   = 3;
+  int64  amount          = 4; // do not use float, we encounter cents
+  string currency        = 5;
+  string description     = 6;
+}
+
+message CreateTransferResponse {
+  string            transaction_id = 1;
+  TransactionStatus status         = 2;
+}
+
+message GetTransactionRequest {
+  string transaction_id = 1;
+}
+
+message GetTransactionsByAccountRequest {
+  string account_id = 1;
+  int32  limit      = 2;
+  int32  offset     = 3;
+}
+
+message TransactionList {
+  repeated Transaction transactions = 1;
+  int32                total        = 2;
+}
+
+message Transaction {
+  string                    id              = 1;
+  string                    idempotency_key = 2;
+  string                    from_account_id = 3;
+  string                    to_account_id   = 4;
+  int64                     amount          = 5;
+  string                    currency        = 6;
+  string                    description     = 7;
+  TransactionStatus         status          = 8;
+  string                    failure_reason  = 9;
+  google.protobuf.Timestamp created_at      = 10;
+  google.protobuf.Timestamp updated_at      = 11;
+}
+
+enum TransactionStatus {
+  TRANSACTION_STATUS_UNSPECIFIED = 0;
+  TRANSACTION_STATUS_PENDING     = 1;
+  TRANSACTION_STATUS_PROCESSING  = 2;
+  TRANSACTION_STATUS_COMPLETED   = 3;
+  TRANSACTION_STATUS_FAILED      = 4;
+  TRANSACTION_STATUS_REVERSED    = 5;
+}
