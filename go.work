@@ -1,0 +1,9 @@
+go 1.25.3
+
+use (
+    ./pkg
+    ./services/user
+    ./services/account
+    ./services/transaction
+    ./generated/proto
+)
