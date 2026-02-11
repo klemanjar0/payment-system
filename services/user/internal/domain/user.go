@@ -4,6 +4,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/klemanjar0/payment-system/pkg/logger"
+	"github.com/klemanjar0/payment-system/services/user/internal/repository/postgres/sqlc"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -68,6 +70,28 @@ func NewUser(email, phone, password, firstName, lastName string) (*User, error) 
 		KYCStatus:    KYCStatusNone,
 		CreatedAt:    now,
 		UpdatedAt:    now,
+	}, nil
+}
+
+func NewUserOfSql(usr *sqlc.User) (*User, error) {
+	id := usr.ID.String()
+
+	if id == "" {
+		logger.Error("user ID is missing")
+		return nil, ErrInternal
+	}
+
+	return &User{
+		ID:           id,
+		Email:        usr.Email,
+		Phone:        usr.Phone,
+		PasswordHash: usr.PasswordHash,
+		FirstName:    usr.FirstName,
+		LastName:     usr.LastName,
+		Status:       UserStatus(usr.Status),
+		KYCStatus:    KYCStatus(usr.KycStatus),
+		CreatedAt:    usr.CreatedAt.Time,
+		UpdatedAt:    usr.UpdatedAt.Time,
 	}, nil
 }
 

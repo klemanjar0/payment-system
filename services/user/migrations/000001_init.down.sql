@@ -1,3 +1,4 @@
 DROP TABLE IF EXISTS users;
 DROP TYPE IF EXISTS kyc_status;
 DROP TYPE IF EXISTS user_status;
+DROP TABLE IF EXISTS refresh_tokens;

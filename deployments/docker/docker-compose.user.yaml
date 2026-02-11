@@ -1,0 +1,38 @@
+services:
+  user-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: user_service
+      POSTGRES_PASSWORD: user_service_pass
+      POSTGRES_DB: user_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - user-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_service -d user_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  user:
+    build:
+      context: ../../
+      dockerfile: services/user/Dockerfile
+    ports:
+      - "50051:50051"
+    environment:
+      GRPC_PORT: "50051"
+      DB_HOST: user-db
+      DB_PORT: "5432"
+      DB_USER: user_service
+      DB_PASSWORD: user_service_pass
+      DB_NAME: user_db
+      DB_SSL_MODE: disable
+      KAFKA_BROKERS: ""
+    depends_on:
+      user-db:
+        condition: service_healthy
+
+volumes:
+  user-db-data:

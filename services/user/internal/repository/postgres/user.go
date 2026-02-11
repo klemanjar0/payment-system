@@ -3,129 +3,125 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/klemanjar0/payment-system/pkg/logger"
+	utilid "github.com/klemanjar0/payment-system/pkg/util_id"
 	"github.com/klemanjar0/payment-system/services/user/internal/domain"
+	"github.com/klemanjar0/payment-system/services/user/internal/repository/postgres/sqlc"
 )
 
 type UserRepository struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	queries *sqlc.Queries
 }
 
 func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
-	return &UserRepository{pool: pool}
+	queries := sqlc.New(pool)
+	return &UserRepository{pool: pool, queries: queries}
 }
 
-func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
-	query := `
-		INSERT INTO users (id, email, phone, password_hash, first_name, last_name, status, kyc_status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`
+func (r *UserRepository) Create(ctx context.Context, user *domain.User) (*domain.User, error) {
+	entity, err := r.queries.CreateUser(ctx, sqlc.CreateUserParams{
+		Email:        user.Email,
+		Phone:        user.Phone,
+		PasswordHash: user.PasswordHash,
+		FirstName:    user.FirstName,
+		LastName:     user.LastName,
+		Status:       sqlc.UserStatus(user.Status),
+		KycStatus:    sqlc.KycStatus(user.KYCStatus),
+		CreatedAt:    pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		UpdatedAt:    pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	})
 
-	_, err := r.pool.Exec(ctx, query,
-		user.ID,
-		user.Email,
-		user.Phone,
-		user.PasswordHash,
-		user.FirstName,
-		user.LastName,
-		user.Status,
-		user.KYCStatus,
-		user.CreatedAt,
-		user.UpdatedAt,
-	)
+	if err == nil {
+		logger.Debug("UserRepository->Create. Entity Created", "User", entity)
+	} else {
+		return nil, err
+	}
 
-	return err
+	return domain.NewUserOfSql(&entity)
 }
 
 func (r *UserRepository) GetByID(ctx context.Context, id string) (*domain.User, error) {
-	query := `
-		SELECT id, email, phone, password_hash, first_name, last_name, status, kyc_status, created_at, updated_at
-		FROM users
-		WHERE id = $1
-	`
+	entity, err := r.queries.GetByID(ctx, utilid.FromString(id).AsPgUUID())
 
-	return r.scanUser(ctx, query, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrUserNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return domain.NewUserOfSql(&entity)
 }
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
-	query := `
-		SELECT id, email, phone, password_hash, first_name, last_name, status, kyc_status, created_at, updated_at
-		FROM users
-		WHERE email = $1
-	`
+	entity, err := r.queries.GetByEmail(ctx, email)
 
-	return r.scanUser(ctx, query, email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrUserNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return domain.NewUserOfSql(&entity)
 }
 
 func (r *UserRepository) GetByPhone(ctx context.Context, phone string) (*domain.User, error) {
-	query := `
-		SELECT id, email, phone, password_hash, first_name, last_name, status, kyc_status, created_at, updated_at
-		FROM users
-		WHERE phone = $1
-	`
+	entity, err := r.queries.GetByPhone(ctx, phone)
 
-	return r.scanUser(ctx, query, phone)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrUserNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return domain.NewUserOfSql(&entity)
 }
 
-func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
-	query := `
-		UPDATE users
-		SET email = $2, phone = $3, password_hash = $4, first_name = $5, last_name = $6, 
-		    status = $7, kyc_status = $8, updated_at = $9
-		WHERE id = $1
-	`
+func (r *UserRepository) Update(ctx context.Context, user *domain.User) (*domain.User, error) {
+	entity, err := r.queries.UpdateUser(ctx, sqlc.UpdateUserParams{
+		ID:           utilid.FromString(user.ID).AsPgUUID(),
+		Email:        user.Email,
+		Phone:        user.Phone,
+		PasswordHash: user.PasswordHash,
+		FirstName:    user.FirstName,
+		LastName:     user.LastName,
+		Status:       sqlc.UserStatus(user.Status),
+		KycStatus:    sqlc.KycStatus(user.KYCStatus),
+		UpdatedAt:    pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	})
 
-	_, err := r.pool.Exec(ctx, query,
-		user.ID,
-		user.Email,
-		user.Phone,
-		user.PasswordHash,
-		user.FirstName,
-		user.LastName,
-		user.Status,
-		user.KYCStatus,
-		user.UpdatedAt,
-	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrUserNotFound
+	}
 
-	return err
+	if err != nil {
+		return nil, err
+	}
+
+	return domain.NewUserOfSql(&entity)
 }
 
 func (r *UserRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)`
+	exists, err := r.queries.ExistsByEmail(ctx, email)
 
-	var exists bool
-	err := r.pool.QueryRow(ctx, query, email).Scan(&exists)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, domain.ErrUserNotFound
+	}
+
 	if err != nil {
 		return false, err
 	}
 
 	return exists, nil
-}
-
-func (r *UserRepository) scanUser(ctx context.Context, query string, arg interface{}) (*domain.User, error) {
-	var user domain.User
-
-	err := r.pool.QueryRow(ctx, query, arg).Scan(
-		&user.ID,
-		&user.Email,
-		&user.Phone,
-		&user.PasswordHash,
-		&user.FirstName,
-		&user.LastName,
-		&user.Status,
-		&user.KYCStatus,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, domain.ErrUserNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return &user, nil
 }

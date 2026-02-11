@@ -1,0 +1,38 @@
+services:
+  transaction-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: transaction_service
+      POSTGRES_PASSWORD: transaction_service_pass
+      POSTGRES_DB: transaction_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - transaction-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transaction_service -d transaction_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  transaction:
+    build:
+      context: ../../
+      dockerfile: services/transaction/Dockerfile
+    ports:
+      - "50053:50053"
+    environment:
+      GRPC_PORT: "50053"
+      DB_HOST: transaction-db
+      DB_PORT: "5432"
+      DB_USER: transaction_service
+      DB_PASSWORD: transaction_service_pass
+      DB_NAME: transaction_db
+      DB_SSL_MODE: disable
+      KAFKA_BROKERS: ""
+    depends_on:
+      transaction-db:
+        condition: service_healthy
+
+volumes:
+  transaction-db-data:

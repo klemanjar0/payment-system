@@ -2,10 +2,13 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/klemanjar0/payment-system/pkg/logger"
 )
 
 type Config struct {
@@ -44,4 +47,31 @@ func NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	}
 
 	return pool, nil
+}
+
+func ExecTx[Q interface{ WithTx(tx pgx.Tx) Q }](
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	queries Q,
+	fn func(Q) error,
+) error {
+	tx, err := pool.Begin(ctx)
+
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			logger.Error("failed to rollback", "err", err)
+		}
+	}()
+
+	txQueries := queries.WithTx(tx)
+
+	if err := fn(txQueries); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
