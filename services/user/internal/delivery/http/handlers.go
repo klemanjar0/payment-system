@@ -10,10 +10,12 @@ import (
 )
 
 type UserHTTPHandler struct {
-	createUser     *usecase.CreateUserUseCase
-	authenticate   *usecase.AuthenticateUseCase
-	getUser        *usecase.GetUserUseCase
+	createUser   *usecase.CreateUserUseCase
+	authenticate *usecase.AuthenticateUseCase
+	getUser      *usecase.GetUserUseCase
 	changePassword *usecase.ChangePasswordUseCase
+	refreshToken *usecase.RefreshTokenUseCase
+	logout       *usecase.LogoutUseCase
 }
 
 func NewUserHTTPHandler(
@@ -21,12 +23,16 @@ func NewUserHTTPHandler(
 	authenticate *usecase.AuthenticateUseCase,
 	getUser *usecase.GetUserUseCase,
 	changePassword *usecase.ChangePasswordUseCase,
+	refreshToken *usecase.RefreshTokenUseCase,
+	logout *usecase.LogoutUseCase,
 ) *UserHTTPHandler {
 	return &UserHTTPHandler{
 		createUser:     createUser,
 		authenticate:   authenticate,
 		getUser:        getUser,
 		changePassword: changePassword,
+		refreshToken:   refreshToken,
+		logout:         logout,
 	}
 }
 
@@ -49,8 +55,9 @@ type registerResponse struct {
 }
 
 type authenticateRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email      string `json:"email"`
+	Password   string `json:"password"`
+	DeviceInfo string `json:"device_info"`
 }
 
 type authenticateResponse struct {
@@ -80,6 +87,20 @@ type validateUserResponse struct {
 type changePasswordRequest struct {
 	OldPassword string `json:"old_password"`
 	NewPassword string `json:"new_password"`
+}
+
+type refreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token"`
+	DeviceInfo   string `json:"device_info"`
+}
+
+type refreshTokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+type logoutRequest struct {
+	RefreshToken string `json:"refresh_token"` // optional; omit to logout all sessions
 }
 
 // --- handlers ---
@@ -117,8 +138,9 @@ func (h *UserHTTPHandler) Authenticate(c fiber.Ctx) error {
 	}
 
 	result, err := h.authenticate.Execute(c.Context(), usecase.AuthenticateInput{
-		Email:    req.Email,
-		Password: req.Password,
+		Email:      req.Email,
+		Password:   req.Password,
+		DeviceInfo: req.DeviceInfo,
 	})
 	if err != nil {
 		return httputil.Respond(c).Error(err).Send()
@@ -129,6 +151,45 @@ func (h *UserHTTPHandler) Authenticate(c fiber.Ctx) error {
 		AccessToken:  result.AccessToken,
 		RefreshToken: result.RefreshToken,
 	})
+}
+
+func (h *UserHTTPHandler) RefreshToken(c fiber.Ctx) error {
+	var req refreshTokenRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return httputil.Respond(c).BadRequest(err)
+	}
+
+	result, err := h.refreshToken.Execute(c.Context(), usecase.RefreshTokenInput{
+		RefreshToken: req.RefreshToken,
+		DeviceInfo:   req.DeviceInfo,
+	})
+	if err != nil {
+		return httputil.Respond(c).Error(err).Send()
+	}
+
+	return httputil.Respond(c).OK(refreshTokenResponse{
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+	})
+}
+
+func (h *UserHTTPHandler) Logout(c fiber.Ctx) error {
+	var req logoutRequest
+	_ = c.Bind().Body(&req) // body is optional
+
+	userID, _ := c.Locals("userID").(string)
+	accessToken, _ := c.Locals("accessToken").(string)
+
+	err := h.logout.Execute(c.Context(), usecase.LogoutInput{
+		UserID:       userID,
+		AccessToken:  accessToken,
+		RefreshToken: req.RefreshToken,
+	})
+	if err != nil {
+		return httputil.Respond(c).Error(err).Send()
+	}
+
+	return httputil.Respond(c).NoContent()
 }
 
 func (h *UserHTTPHandler) GetUser(c fiber.Ctx) error {

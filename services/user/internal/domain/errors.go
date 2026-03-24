@@ -17,6 +17,9 @@ var (
 	ErrPasswordTooLong  = errors.New("password must be less than 128 characters")
 	ErrPasswordTooWeak  = errors.New("password must contain uppercase, lowercase and digit")
 
+	// token errors
+	ErrInvalidRefreshToken = errors.New("invalid or expired refresh token")
+
 	// generic
 	ErrInternal = errors.New("internal error")
 )

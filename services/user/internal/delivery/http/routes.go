@@ -10,8 +10,12 @@ func RegisterRoutes(app *fiber.App, h *UserHTTPHandler, authMiddleware fiber.Han
 	// public
 	v1.Post("/users", h.Register)
 	v1.Post("/auth/login", h.Authenticate)
+	v1.Post("/auth/refresh", h.RefreshToken)
 
 	// protected
+	auth := v1.Group("/auth", authMiddleware)
+	auth.Post("/logout", h.Logout)
+
 	users := v1.Group("/users", authMiddleware)
 	users.Get("/me", h.Me)
 	users.Get("/:id", h.GetUser)

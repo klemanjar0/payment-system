@@ -18,6 +18,7 @@ type CreateUserInput struct {
 
 type CreateUserUseCase struct {
 	repo      domain.UserRepository
+	tokenRepo domain.RefreshTokenRepository
 	tokenSvc  auth.TokenService
 	eventPub  EventPublisher
 	auditLog  UserAuditLogger
@@ -33,15 +34,17 @@ type CreateUserResult struct {
 
 func NewCreateUserUseCase(
 	repo domain.UserRepository,
+	tokenRepo domain.RefreshTokenRepository,
 	tokenSvc auth.TokenService,
 	eventPub EventPublisher,
 	auditLog UserAuditLogger,
 ) *CreateUserUseCase {
 	return &CreateUserUseCase{
-		repo:     repo,
-		tokenSvc: tokenSvc,
-		eventPub: eventPub,
-		auditLog: auditLog,
+		repo:      repo,
+		tokenRepo: tokenRepo,
+		tokenSvc:  tokenSvc,
+		eventPub:  eventPub,
+		auditLog:  auditLog,
 	}
 }
 
@@ -75,7 +78,17 @@ func (uc *CreateUserUseCase) Execute(ctx context.Context, input CreateUserInput)
 		return nil, domain.ErrInternal
 	}
 
-	refreshToken, err := uc.tokenSvc.GenerateRefreshToken(newUser.ID)
+	// Persist a refresh token row so it can be validated and rotated later.
+	dbToken, err := uc.tokenRepo.CreateRefreshToken(ctx, &domain.RefreshToken{
+		UserID:    newUser.ID,
+		ExpiresAt: time.Now().Add(auth.DefaultRefreshTokenExpiry),
+	})
+	if err != nil {
+		return nil, domain.ErrInternal
+	}
+
+	// The JWT carries the DB token UUID so the refresh endpoint can look it up.
+	refreshToken, err := uc.tokenSvc.GenerateRefreshToken(dbToken.TokenID)
 	if err != nil {
 		return nil, domain.ErrInternal
 	}

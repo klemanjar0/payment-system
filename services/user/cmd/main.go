@@ -24,6 +24,7 @@ import (
 	"github.com/klemanjar0/payment-system/pkg/logger"
 	pkgpostgres "github.com/klemanjar0/payment-system/pkg/postgres"
 	pkgredis "github.com/klemanjar0/payment-system/pkg/redis"
+	"github.com/klemanjar0/payment-system/pkg/tokenblacklist"
 	userauditlog "github.com/klemanjar0/payment-system/services/user/internal/auditlog"
 	grpcdelivery "github.com/klemanjar0/payment-system/services/user/internal/delivery/grpc"
 	httpdelivery "github.com/klemanjar0/payment-system/services/user/internal/delivery/http"
@@ -97,6 +98,9 @@ func main() {
 		logger.Fatal("failed to create token service", "err", err)
 	}
 
+	// --- Token blacklist (Redis-backed) ---
+	bl := tokenblacklist.NewRedisBlacklist(redisClient)
+
 	// --- Kafka event publisher ---
 	var eventPub usecase.EventPublisher
 	if kafkaBrokers := config.GetEnv("KAFKA_BROKERS", ""); kafkaBrokers != "" {
@@ -112,6 +116,7 @@ func main() {
 
 	// --- Repositories ---
 	userRepo := pgrepository.NewUserRepository(pgPool)
+	refreshTokenRepo := pgrepository.NewRefreshTokenRepository(pgPool)
 	cachedUserRepository := cached.NewCachedUserRepository(userRepo, redisClient)
 
 	// --- Audit log stack:
@@ -121,10 +126,12 @@ func main() {
 	userAudit := userauditlog.New(auditLogger)
 
 	// --- Use cases ---
-	createUserUC := usecase.NewCreateUserUseCase(userRepo, tokenSvc, eventPub, userAudit)
-	authenticateUC := usecase.NewAuthenticateUseCase(userRepo, tokenSvc, userAudit)
+	createUserUC := usecase.NewCreateUserUseCase(userRepo, refreshTokenRepo, tokenSvc, eventPub, userAudit)
+	authenticateUC := usecase.NewAuthenticateUseCase(userRepo, refreshTokenRepo, tokenSvc, userAudit)
 	getUserUC := usecase.NewGetUserUseCase(cachedUserRepository)
 	changePasswordUC := usecase.NewChangePasswordUseCase(userRepo, userAudit)
+	refreshTokenUC := usecase.NewRefreshTokenUseCase(refreshTokenRepo, tokenSvc, userAudit)
+	logoutUC := usecase.NewLogoutUseCase(refreshTokenRepo, tokenSvc, bl, userAudit)
 
 	// --- HTTP error mappings ---
 	httputil.RegisterErrorMapping(domain.ErrUserNotFound, http.StatusNotFound)
@@ -137,14 +144,17 @@ func main() {
 	httputil.RegisterErrorMapping(domain.ErrPasswordTooShort, http.StatusBadRequest)
 	httputil.RegisterErrorMapping(domain.ErrPasswordTooLong, http.StatusBadRequest)
 	httputil.RegisterErrorMapping(domain.ErrPasswordTooWeak, http.StatusBadRequest)
+	httputil.RegisterErrorMapping(domain.ErrInvalidRefreshToken, http.StatusUnauthorized)
 
 	// --- HTTP server (Fiber) ---
 	app := fiberutil.NewApp()
 	app.Use(fiberMiddleware.Recovery())
 	app.Use(fiberMiddleware.Logging())
 
-	httpHandler := httpdelivery.NewUserHTTPHandler(createUserUC, authenticateUC, getUserUC, changePasswordUC)
-	httpdelivery.RegisterRoutes(app, httpHandler, fiberMiddleware.Auth(tokenSvc))
+	httpHandler := httpdelivery.NewUserHTTPHandler(
+		createUserUC, authenticateUC, getUserUC, changePasswordUC, refreshTokenUC, logoutUC,
+	)
+	httpdelivery.RegisterRoutes(app, httpHandler, fiberMiddleware.Auth(tokenSvc, bl))
 
 	httpPort := config.GetEnv("HTTP_PORT", "8080")
 

@@ -7,11 +7,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/klemanjar0/payment-system/pkg/auth"
 	"github.com/klemanjar0/payment-system/pkg/httputil"
+	"github.com/klemanjar0/payment-system/pkg/tokenblacklist"
 )
 
 // Auth returns a Fiber middleware that validates a Bearer JWT access token.
-// On success, it stores the userID in c.Locals("userID").
-func Auth(tokenSvc auth.TokenService) fiber.Handler {
+// On success it stores userID and the raw token string in c.Locals.
+func Auth(tokenSvc auth.TokenService, bl tokenblacklist.Blacklist) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		header := c.Get("Authorization")
 		if !strings.HasPrefix(header, "Bearer ") {
@@ -27,7 +28,13 @@ func Auth(tokenSvc auth.TokenService) fiber.Handler {
 			return httputil.Respond(c).Unauthorized(auth.ErrInvalidToken)
 		}
 
+		// Reject tokens that have been blacklisted (e.g. after logout).
+		if blacklisted, _ := bl.IsBlacklisted(c.Context(), claims.ID); blacklisted {
+			return httputil.Respond(c).Unauthorized(auth.ErrInvalidToken)
+		}
+
 		c.Locals("userID", claims.TokenID)
+		c.Locals("accessToken", token) // raw token string, used by logout handler
 		return c.Next()
 	}
 }

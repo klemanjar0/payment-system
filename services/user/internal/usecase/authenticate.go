@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"time"
 
 	"github.com/klemanjar0/payment-system/pkg/auth"
 	"github.com/klemanjar0/payment-system/pkg/logger"
@@ -9,9 +10,10 @@ import (
 )
 
 type LoginParams struct {
-	repo     domain.UserRepository
-	tokenSvc auth.TokenService
-	auditLog UserAuditLogger
+	repo      domain.UserRepository
+	tokenRepo domain.RefreshTokenRepository
+	tokenSvc  auth.TokenService
+	auditLog  UserAuditLogger
 }
 
 type AuthenticateUseCase struct {
@@ -19,8 +21,9 @@ type AuthenticateUseCase struct {
 }
 
 type AuthenticateInput struct {
-	Email    string
-	Password string
+	Email      string
+	Password   string
+	DeviceInfo string
 }
 
 type AuthenticateResult struct {
@@ -31,14 +34,16 @@ type AuthenticateResult struct {
 
 func NewAuthenticateUseCase(
 	repo domain.UserRepository,
+	tokenRepo domain.RefreshTokenRepository,
 	tokenSvc auth.TokenService,
 	auditLog UserAuditLogger,
 ) *AuthenticateUseCase {
 	return &AuthenticateUseCase{
 		LoginParams: &LoginParams{
-			repo:     repo,
-			tokenSvc: tokenSvc,
-			auditLog: auditLog,
+			repo:      repo,
+			tokenRepo: tokenRepo,
+			tokenSvc:  tokenSvc,
+			auditLog:  auditLog,
 		},
 	}
 }
@@ -72,9 +77,21 @@ func (uc *AuthenticateUseCase) Execute(ctx context.Context, input AuthenticateIn
 		return nil, domain.ErrInternal
 	}
 
-	refreshToken, err := uc.tokenSvc.GenerateRefreshToken(user.ID)
+	// Persist a refresh token row so it can be validated and rotated later.
+	dbToken, err := uc.tokenRepo.CreateRefreshToken(ctx, &domain.RefreshToken{
+		UserID:     user.ID,
+		DeviceInfo: input.DeviceInfo,
+		ExpiresAt:  time.Now().Add(auth.DefaultRefreshTokenExpiry),
+	})
 	if err != nil {
-		uc.auditLog.LogLoginFailure(ctx, input.Email, "refresh token generation failed")
+		uc.auditLog.LogLoginFailure(ctx, input.Email, "refresh token persistence failed")
+		return nil, domain.ErrInternal
+	}
+
+	// The JWT carries the DB token UUID so the refresh endpoint can look it up.
+	refreshToken, err := uc.tokenSvc.GenerateRefreshToken(dbToken.TokenID)
+	if err != nil {
+		uc.auditLog.LogLoginFailure(ctx, input.Email, "refresh token signing failed")
 		return nil, domain.ErrInternal
 	}
 

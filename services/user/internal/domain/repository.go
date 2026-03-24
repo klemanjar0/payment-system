@@ -19,6 +19,11 @@ type CachedUserRepository interface {
 }
 
 type RefreshTokenRepository interface {
-	CreateRefreshToken(ctx context.Context, id string) (*RefreshToken, error)
-	RevokeAllUserTokens(ctx context.Context, userId, reason string) error
+	CreateRefreshToken(ctx context.Context, token *RefreshToken) (*RefreshToken, error)
+	GetRefreshToken(ctx context.Context, tokenID string) (*RefreshToken, error)
+	// ConsumeRefreshToken atomically marks a token as used (sets last_used_at).
+	// Returns ErrInvalidRefreshToken if the token was already consumed, revoked, or expired.
+	ConsumeRefreshToken(ctx context.Context, tokenID string) (*RefreshToken, error)
+	RevokeTokenFamily(ctx context.Context, tokenID string) error
+	RevokeAllUserTokens(ctx context.Context, userID string) error
 }
