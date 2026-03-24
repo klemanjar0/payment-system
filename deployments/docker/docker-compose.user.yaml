@@ -14,7 +14,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
+  # psql -U user_service -h localhost user_db -p 5433
+  
   user-redis:
     image: redis:7-alpine
     ports:
@@ -25,17 +26,18 @@ services:
       timeout: 5s
       retries: 5
 
-  user-audit-db:
-    image: mongo:8
-    ports:
-      - "27017:27017"
+  user-migrate:
+    image: migrate/migrate
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://user_service:user_service_pass@user-db:5432/user_db?sslmode=disable"
+      - "up"
     volumes:
-      - user-audit-db-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - ../../services/user/migrations:/migrations:ro
+    depends_on:
+      user-db:
+        condition: service_healthy
+    restart: on-failure
 
   user:
     build:
@@ -43,8 +45,10 @@ services:
       dockerfile: services/user/Dockerfile
     ports:
       - "50051:50051"
+      - "8080:8080"
     environment:
       GRPC_PORT: "50051"
+      HTTP_PORT: "8080"
       DB_HOST: user-db
       DB_PORT: "5432"
       DB_USER: user_service
@@ -52,21 +56,18 @@ services:
       DB_NAME: user_db
       DB_SSL_MODE: disable
       KAFKA_BROKERS: ""
-      MONGO_URI: "mongodb://user-audit-db:27017"
-      MONGO_AUDIT_DB: audit
       REDIS_HOST: user-redis
       REDIS_PORT: "6379"
-      PRIVATE_KEY_PATH: /keys/private.pem
+      PRIVATE_KEY_PATH: /keys/private-key.pem
     volumes:
       - ../../keys:/keys:ro
     depends_on:
       user-db:
         condition: service_healthy
-      user-audit-db:
-        condition: service_healthy
       user-redis:
         condition: service_healthy
+      user-migrate:
+        condition: service_completed_successfully
 
 volumes:
   user-db-data:
-  user-audit-db-data:

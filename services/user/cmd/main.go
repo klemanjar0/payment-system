@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -12,17 +13,21 @@ import (
 
 	pb "github.com/klemanjar0/payment-system/generated/proto/user"
 	pkgauditlog "github.com/klemanjar0/payment-system/pkg/auditlog"
-	mongoauditlog "github.com/klemanjar0/payment-system/pkg/auditlog/mongodb"
+	pgauditlog "github.com/klemanjar0/payment-system/pkg/auditlog/postgres"
 	"github.com/klemanjar0/payment-system/pkg/auth"
 	"github.com/klemanjar0/payment-system/pkg/config"
+	"github.com/klemanjar0/payment-system/pkg/fiberutil"
+	fiberMiddleware "github.com/klemanjar0/payment-system/pkg/fiberutil/middleware"
 	"github.com/klemanjar0/payment-system/pkg/grpcutil"
+	"github.com/klemanjar0/payment-system/pkg/httputil"
 	"github.com/klemanjar0/payment-system/pkg/kafka"
 	"github.com/klemanjar0/payment-system/pkg/logger"
-	"github.com/klemanjar0/payment-system/pkg/mongodb"
 	pkgpostgres "github.com/klemanjar0/payment-system/pkg/postgres"
 	pkgredis "github.com/klemanjar0/payment-system/pkg/redis"
 	userauditlog "github.com/klemanjar0/payment-system/services/user/internal/auditlog"
 	grpcdelivery "github.com/klemanjar0/payment-system/services/user/internal/delivery/grpc"
+	httpdelivery "github.com/klemanjar0/payment-system/services/user/internal/delivery/http"
+	"github.com/klemanjar0/payment-system/services/user/internal/domain"
 	"github.com/klemanjar0/payment-system/services/user/internal/repository/cached"
 	pgrepository "github.com/klemanjar0/payment-system/services/user/internal/repository/postgres"
 	"github.com/klemanjar0/payment-system/services/user/internal/usecase"
@@ -67,16 +72,6 @@ func main() {
 		logger.Fatal("failed to connect to postgres", "err", err)
 	}
 
-	// --- MongoDB (audit logs) ---
-	auditDB := config.GetEnv("MONGO_AUDIT_DB", "audit")
-	mongoClient, err := mongodb.NewClient(ctx, mongodb.Config{
-		URI:      config.GetEnv("MONGO_URI", "mongodb://localhost:27017"),
-		Database: auditDB,
-	})
-	if err != nil {
-		logger.Fatal("failed to connect to mongodb", "err", err)
-	}
-
 	// --- Redis ---
 	redisClient, err := pkgredis.NewClient(ctx, pkgredis.Config{
 		Host:     config.GetEnv("REDIS_HOST", "localhost"),
@@ -119,14 +114,9 @@ func main() {
 	userRepo := pgrepository.NewUserRepository(pgPool)
 	cachedUserRepository := cached.NewCachedUserRepository(userRepo, redisClient)
 
-	// --- Audit log stack (3 layers):
-	//   mongoauditlog.Repository → pkgauditlog.Logger → userauditlog.UserAuditLogger
-	auditRepo := mongoauditlog.New(mongoClient, auditDB, "audit_logs")
-
-	if err := auditRepo.EnsureIndexes(ctx); err != nil {
-		logger.Warn("failed to ensure audit log indexes", "err", err)
-	}
-
+	// --- Audit log stack:
+	//   pgauditlog.Repository → pkgauditlog.Logger → userauditlog.UserAuditLogger
+	auditRepo := pgauditlog.New(pgPool)
 	auditLogger := pkgauditlog.New(auditRepo, "user")
 	userAudit := userauditlog.New(auditLogger)
 
@@ -135,6 +125,28 @@ func main() {
 	authenticateUC := usecase.NewAuthenticateUseCase(userRepo, tokenSvc, userAudit)
 	getUserUC := usecase.NewGetUserUseCase(cachedUserRepository)
 	changePasswordUC := usecase.NewChangePasswordUseCase(userRepo, userAudit)
+
+	// --- HTTP error mappings ---
+	httputil.RegisterErrorMapping(domain.ErrUserNotFound, http.StatusNotFound)
+	httputil.RegisterErrorMapping(domain.ErrUserAlreadyExists, http.StatusConflict)
+	httputil.RegisterErrorMapping(domain.ErrInvalidCredentials, http.StatusUnauthorized)
+	httputil.RegisterErrorMapping(domain.ErrUserBlocked, http.StatusForbidden)
+	httputil.RegisterErrorMapping(domain.ErrUserNotActive, http.StatusForbidden)
+	httputil.RegisterErrorMapping(domain.ErrInvalidEmail, http.StatusBadRequest)
+	httputil.RegisterErrorMapping(domain.ErrInvalidPhone, http.StatusBadRequest)
+	httputil.RegisterErrorMapping(domain.ErrPasswordTooShort, http.StatusBadRequest)
+	httputil.RegisterErrorMapping(domain.ErrPasswordTooLong, http.StatusBadRequest)
+	httputil.RegisterErrorMapping(domain.ErrPasswordTooWeak, http.StatusBadRequest)
+
+	// --- HTTP server (Fiber) ---
+	app := fiberutil.NewApp()
+	app.Use(fiberMiddleware.Recovery())
+	app.Use(fiberMiddleware.Logging())
+
+	httpHandler := httpdelivery.NewUserHTTPHandler(createUserUC, authenticateUC, getUserUC, changePasswordUC)
+	httpdelivery.RegisterRoutes(app, httpHandler, fiberMiddleware.Auth(tokenSvc))
+
+	httpPort := config.GetEnv("HTTP_PORT", "8080")
 
 	// --- gRPC server ---
 	grpcPort := config.GetEnv("GRPC_PORT", "50051")
@@ -158,13 +170,21 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		logger.Info("user service started", "port", grpcPort)
+		logger.Info("user grpc service started", "port", grpcPort)
 		if err := srv.Serve(lis); err != nil {
 			logger.Fatal("grpc server failed", "err", err)
+		}
+	}()
+
+	go func() {
+		logger.Info("user http service started", "port", httpPort)
+		if err := app.Listen(":" + httpPort); err != nil {
+			logger.Fatal("http server failed", "err", err)
 		}
 	}()
 
 	<-quit
 	logger.Info("shutting down user service")
 	srv.GracefulStop()
+	_ = app.Shutdown()
 }

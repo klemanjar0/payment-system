@@ -2,7 +2,7 @@
 CREATE TYPE user_status AS ENUM ('pending', 'active', 'blocked', 'deleted');
 CREATE TYPE kyc_status AS ENUM ('none', 'pending', 'verified', 'rejected');
 CREATE TABLE users (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY default gen_random_uuid(),
     email VARCHAR(255) NOT NULL UNIQUE,
     phone VARCHAR(20) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,

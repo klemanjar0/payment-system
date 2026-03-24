@@ -14,15 +14,15 @@ const (
 )
 
 type Event struct {
-	ID        string         `bson:"_id"               json:"id"`
-	Service   string         `bson:"service"           json:"service"`
-	Action    string         `bson:"action"            json:"action"`
-	ActorID   string         `bson:"actor_id"          json:"actor_id"`
-	TargetID  string         `bson:"target_id"         json:"target_id"`
-	Status    string         `bson:"status"            json:"status"`
-	Metadata  map[string]any `bson:"metadata"          json:"metadata"`
-	Error     string         `bson:"error,omitempty"   json:"error,omitempty"`
-	Timestamp time.Time      `bson:"timestamp"         json:"timestamp"`
+	ID        string         `json:"id"`
+	Service   string         `json:"service"`
+	Action    string         `json:"action"`
+	ActorID   string         `json:"actor_id"`
+	TargetID  string         `json:"target_id"`
+	Status    string         `json:"status"`
+	Metadata  map[string]any `json:"metadata"`
+	Error     string         `json:"error,omitempty"`
+	Timestamp time.Time      `json:"timestamp"`
 }
 
 type Repository interface {

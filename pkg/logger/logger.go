@@ -17,7 +17,7 @@ func Init(service string, isDev bool) {
 		config = zap.NewProductionConfig()
 	}
 
-	logger, _ := config.Build()
+	logger, _ := config.Build(zap.WithCaller(true), zap.AddStacktrace(zapcore.FatalLevel))
 	log = logger.Sugar().With("service", service)
 }
 
