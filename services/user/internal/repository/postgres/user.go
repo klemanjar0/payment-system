@@ -40,6 +40,7 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) (*domain
 	if err == nil {
 		logger.Debug("UserRepository->Create. Entity Created", "User", entity)
 	} else {
+		logger.Error("failed to create user", "err", err)
 		return nil, err
 	}
 
@@ -88,8 +89,8 @@ func (r *UserRepository) GetByPhone(ctx context.Context, phone string) (*domain.
 	return domain.NewUserOfSql(&entity)
 }
 
-func (r *UserRepository) Update(ctx context.Context, user *domain.User) (*domain.User, error) {
-	entity, err := r.queries.UpdateUser(ctx, sqlc.UpdateUserParams{
+func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
+	_, err := r.queries.UpdateUser(ctx, sqlc.UpdateUserParams{
 		ID:           utilid.FromString(user.ID).AsPgUUID(),
 		Email:        user.Email,
 		Phone:        user.Phone,
@@ -102,14 +103,18 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) (*domain
 	})
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, domain.ErrUserNotFound
+		return domain.ErrUserNotFound
 	}
 
-	if err != nil {
-		return nil, err
-	}
+	return err
+}
 
-	return domain.NewUserOfSql(&entity)
+func (r *UserRepository) Deactivate(ctx context.Context, userID string) error {
+	err := r.queries.DeactivateUser(ctx, utilid.FromString(userID).AsPgUUID())
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrUserNotFound
+	}
+	return err
 }
 
 func (r *UserRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {

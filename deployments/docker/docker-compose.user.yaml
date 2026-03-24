@@ -15,6 +15,28 @@ services:
       timeout: 5s
       retries: 5
 
+  user-redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  user-audit-db:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    volumes:
+      - user-audit-db-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   user:
     build:
       context: ../../
@@ -30,9 +52,21 @@ services:
       DB_NAME: user_db
       DB_SSL_MODE: disable
       KAFKA_BROKERS: ""
+      MONGO_URI: "mongodb://user-audit-db:27017"
+      MONGO_AUDIT_DB: audit
+      REDIS_HOST: user-redis
+      REDIS_PORT: "6379"
+      PRIVATE_KEY_PATH: /keys/private.pem
+    volumes:
+      - ../../keys:/keys:ro
     depends_on:
       user-db:
+        condition: service_healthy
+      user-audit-db:
+        condition: service_healthy
+      user-redis:
         condition: service_healthy
 
 volumes:
   user-db-data:
+  user-audit-db-data:

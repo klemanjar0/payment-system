@@ -4,7 +4,8 @@ DOCKER_COMPOSE_DIR = deployments/docker
 	build run-local \
 	run-user run-account run-transaction \
 	build-user build-account build-transaction \
-	migrate-up test
+	migrate-up test \
+	generate-keys
 
 # --- Proto ---
 proto:
@@ -70,3 +71,6 @@ migrate-up:
 
 test:
 	go test ./...
+
+generate-keys:
+	./scripts/create-keys.sh

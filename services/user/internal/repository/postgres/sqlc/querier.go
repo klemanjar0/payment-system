@@ -11,13 +11,23 @@ import (
 )
 
 type Querier interface {
+	CleanExpiredTokens(ctx context.Context) error
+	ConsumeRefreshToken(ctx context.Context, id pgtype.UUID) (RefreshToken, error)
+	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeactivateUser(ctx context.Context, id pgtype.UUID) error
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	GetByEmail(ctx context.Context, email string) (User, error)
 	GetByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetByPhone(ctx context.Context, phone string) (User, error)
+	GetRefreshToken(ctx context.Context, id pgtype.UUID) (RefreshToken, error)
+	GetRefreshTokenForUpdate(ctx context.Context, id pgtype.UUID) (RefreshToken, error)
+	GetUserActiveTokens(ctx context.Context, userID pgtype.UUID) ([]RefreshToken, error)
+	RevokeAllUserTokens(ctx context.Context, userID pgtype.UUID) error
+	RevokeRefreshToken(ctx context.Context, id pgtype.UUID) error
+	RevokeTokenFamily(ctx context.Context, id pgtype.UUID) error
 	UpdatePassword(ctx context.Context, arg UpdatePasswordParams) error
+	UpdateRefreshTokenLastUsed(ctx context.Context, id pgtype.UUID) error
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 }
 

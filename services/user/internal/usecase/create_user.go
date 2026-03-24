@@ -2,28 +2,11 @@ package usecase
 
 import (
 	"context"
+	"time"
 
-	"github.com/google/uuid"
+	"github.com/klemanjar0/payment-system/pkg/auth"
 	"github.com/klemanjar0/payment-system/services/user/internal/domain"
 )
-
-type CreateUserUseCase struct {
-	repo     domain.UserRepository
-	tokenSvc TokenService
-	eventPub EventPublisher
-}
-
-func NewCreateUserUseCase(
-	repo domain.UserRepository,
-	tokenSvc TokenService,
-	eventPub EventPublisher,
-) *CreateUserUseCase {
-	return &CreateUserUseCase{
-		repo:     repo,
-		tokenSvc: tokenSvc,
-		eventPub: eventPub,
-	}
-}
 
 type CreateUserInput struct {
 	Email     string
@@ -33,13 +16,36 @@ type CreateUserInput struct {
 	LastName  string
 }
 
-type CreateUserOutput struct {
-	UserID       string
-	AccessToken  string
-	RefreshToken string
+type CreateUserUseCase struct {
+	repo      domain.UserRepository
+	tokenSvc  auth.TokenService
+	eventPub  EventPublisher
+	auditLog  UserAuditLogger
 }
 
-func (uc *CreateUserUseCase) Execute(ctx context.Context, input CreateUserInput) (*CreateUserOutput, error) {
+type CreateUserResult struct {
+	UserID       string
+	Email        string
+	AccessToken  string
+	RefreshToken string
+	CreatedAt    time.Time
+}
+
+func NewCreateUserUseCase(
+	repo domain.UserRepository,
+	tokenSvc auth.TokenService,
+	eventPub EventPublisher,
+	auditLog UserAuditLogger,
+) *CreateUserUseCase {
+	return &CreateUserUseCase{
+		repo:     repo,
+		tokenSvc: tokenSvc,
+		eventPub: eventPub,
+		auditLog: auditLog,
+	}
+}
+
+func (uc *CreateUserUseCase) Execute(ctx context.Context, input CreateUserInput) (*CreateUserResult, error) {
 	exists, err := uc.repo.ExistsByEmail(ctx, input.Email)
 	if err != nil {
 		return nil, domain.ErrInternal
@@ -48,7 +54,7 @@ func (uc *CreateUserUseCase) Execute(ctx context.Context, input CreateUserInput)
 		return nil, domain.ErrUserAlreadyExists
 	}
 
-	user, err := domain.NewUser(
+	data, err := domain.NewUser(
 		input.Email,
 		input.Phone,
 		input.Password,
@@ -59,31 +65,34 @@ func (uc *CreateUserUseCase) Execute(ctx context.Context, input CreateUserInput)
 		return nil, err
 	}
 
-	user.ID = uuid.New().String()
-
-	if err := uc.repo.Create(ctx, user); err != nil {
-		return nil, domain.ErrInternal
-	}
-
-	accessToken, err := uc.tokenSvc.GenerateAccessToken(user.ID)
+	newUser, err := uc.repo.Create(ctx, data)
 	if err != nil {
 		return nil, domain.ErrInternal
 	}
 
-	refreshToken, err := uc.tokenSvc.GenerateRefreshToken(user.ID)
+	accessToken, err := uc.tokenSvc.GenerateAccessToken(newUser.ID)
+	if err != nil {
+		return nil, domain.ErrInternal
+	}
+
+	refreshToken, err := uc.tokenSvc.GenerateRefreshToken(newUser.ID)
 	if err != nil {
 		return nil, domain.ErrInternal
 	}
 
 	uc.eventPub.Publish(ctx, "user.created", UserCreatedEvent{
-		UserID:    user.ID,
-		Email:     user.Email,
-		CreatedAt: user.CreatedAt,
+		UserID:    newUser.ID,
+		Email:     newUser.Email,
+		CreatedAt: newUser.CreatedAt,
 	})
 
-	return &CreateUserOutput{
-		UserID:       user.ID,
+	uc.auditLog.LogUserCreated(ctx, newUser.ID, newUser.Email)
+
+	return &CreateUserResult{
+		UserID:       newUser.ID,
+		Email:        newUser.Email,
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
+		CreatedAt:    newUser.CreatedAt,
 	}, nil
 }

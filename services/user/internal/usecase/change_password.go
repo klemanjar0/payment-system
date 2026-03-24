@@ -7,11 +7,15 @@ import (
 )
 
 type ChangePasswordUseCase struct {
-	repo domain.UserRepository
+	repo     domain.UserRepository
+	auditLog UserAuditLogger
 }
 
-func NewChangePasswordUseCase(repo domain.UserRepository) *ChangePasswordUseCase {
-	return &ChangePasswordUseCase{repo: repo}
+func NewChangePasswordUseCase(
+	repo domain.UserRepository,
+	auditLog UserAuditLogger,
+) *ChangePasswordUseCase {
+	return &ChangePasswordUseCase{repo: repo, auditLog: auditLog}
 }
 
 type ChangePasswordInput struct {
@@ -27,12 +31,15 @@ func (uc *ChangePasswordUseCase) Execute(ctx context.Context, input ChangePasswo
 	}
 
 	if err := user.ChangePassword(input.OldPassword, input.NewPassword); err != nil {
+		uc.auditLog.LogPasswordChangeFailed(ctx, input.UserID, err.Error())
 		return err
 	}
 
 	if err := uc.repo.Update(ctx, user); err != nil {
+		uc.auditLog.LogPasswordChangeFailed(ctx, input.UserID, "database update failed")
 		return domain.ErrInternal
 	}
 
+	uc.auditLog.LogPasswordChanged(ctx, input.UserID)
 	return nil
 }

@@ -7,10 +7,10 @@ import (
 )
 
 type GetUserUseCase struct {
-	repo domain.UserRepository
+	repo domain.CachedUserRepository
 }
 
-func NewGetUserUseCase(repo domain.UserRepository) *GetUserUseCase {
+func NewGetUserUseCase(repo domain.CachedUserRepository) *GetUserUseCase {
 	return &GetUserUseCase{repo: repo}
 }
 

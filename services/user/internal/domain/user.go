@@ -28,16 +28,16 @@ const (
 )
 
 type User struct {
-	ID           string
-	Email        string
-	Phone        string
-	PasswordHash string
-	FirstName    string
-	LastName     string
-	Status       UserStatus
-	KYCStatus    KYCStatus
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           string     `json:"id"`
+	Email        string     `json:"email"`
+	Phone        string     `json:"phone"`
+	PasswordHash string     `json:"-"`
+	FirstName    string     `json:"first_name"`
+	LastName     string     `json:"last_name"`
+	Status       UserStatus `json:"status"`
+	KYCStatus    KYCStatus  `json:"kyc_status"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 func NewUser(email, phone, password, firstName, lastName string) (*User, error) {
