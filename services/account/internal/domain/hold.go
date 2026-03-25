@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/klemanjar0/payment-system/pkg/money"
 	utilid "github.com/klemanjar0/payment-system/pkg/util_id"
 	"github.com/klemanjar0/payment-system/services/account/internal/repository/postgres/sqlc"
 )
@@ -20,14 +21,14 @@ type Hold struct {
 	ID            string
 	AccountID     string
 	TransactionID string // idempotency key
-	Amount        int64
+	Amount        money.Amount
 	Description   string
 	Status        HoldStatus
 	CreatedAt     time.Time
 	ReleasedAt    *time.Time
 }
 
-func NewHold(accountID, transactionID string, amount int64, description string) *Hold {
+func NewHold(accountID, transactionID string, amount money.Amount, description string) *Hold {
 	return &Hold{
 		AccountID:     accountID,
 		TransactionID: transactionID,
@@ -65,7 +66,7 @@ func HoldFromSQLC(entity *sqlc.Hold) *Hold {
 		ID:            entity.ID.String(),
 		AccountID:     entity.AccountID.String(),
 		TransactionID: entity.TransactionID.String(),
-		Amount:        entity.Amount,
+		Amount:        money.FromInt(entity.Amount),
 		Description:   entity.Description.String,
 		Status:        HoldStatus(entity.Status),
 		CreatedAt:     entity.CreatedAt.Time,
@@ -83,7 +84,7 @@ func (h *Hold) ToSQLC() *sqlc.Hold {
 		ID:            utilid.FromString(h.ID).AsPgUUID(),
 		AccountID:     utilid.FromString(h.AccountID).AsPgUUID(),
 		TransactionID: utilid.FromString(h.TransactionID).AsPgUUID(),
-		Amount:        h.Amount,
+		Amount:        h.Amount.ToInt(),
 		Description:   pgtype.Text{String: h.Description, Valid: true},
 		Status:        sqlc.HoldStatus(h.Status),
 		CreatedAt:     pgtype.Timestamptz{Time: h.CreatedAt, Valid: true},

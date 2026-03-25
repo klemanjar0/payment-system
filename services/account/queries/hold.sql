@@ -1,6 +1,5 @@
 -- name: CreateHold :one
 INSERT INTO holds (
-        id,
         account_id,
         transaction_id,
         amount,
@@ -8,7 +7,7 @@ INSERT INTO holds (
         status,
         created_at
     )
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 -- name: GetHoldByID :one
 SELECT *

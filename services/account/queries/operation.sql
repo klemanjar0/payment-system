@@ -1,6 +1,5 @@
 -- name: CreateOperation :one
 INSERT INTO operations (
-        id,
         account_id,
         type,
         amount,
@@ -9,7 +8,7 @@ INSERT INTO operations (
         description,
         created_at
     )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 -- name: GetOperationsByAccountID :many
 SELECT *

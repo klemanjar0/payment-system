@@ -26,7 +26,6 @@ func (q *Queries) CountOperationsByAccountID(ctx context.Context, accountID pgty
 
 const createOperation = `-- name: CreateOperation :one
 INSERT INTO operations (
-        id,
         account_id,
         type,
         amount,
@@ -35,12 +34,11 @@ INSERT INTO operations (
         description,
         created_at
     )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING id, account_id, type, amount, balance_after, transaction_id, description, created_at
 `
 
 type CreateOperationParams struct {
-	ID            pgtype.UUID        `json:"id"`
 	AccountID     pgtype.UUID        `json:"account_id"`
 	Type          OperationType      `json:"type"`
 	Amount        int64              `json:"amount"`
@@ -52,7 +50,6 @@ type CreateOperationParams struct {
 
 func (q *Queries) CreateOperation(ctx context.Context, arg CreateOperationParams) (Operation, error) {
 	row := q.db.QueryRow(ctx, createOperation,
-		arg.ID,
 		arg.AccountID,
 		arg.Type,
 		arg.Amount,

@@ -16,7 +16,7 @@ CREATE TABLE accounts (
     UNIQUE(user_id, currency)
 );
 CREATE TABLE holds (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY default gen_random_uuid(),
     account_id UUID NOT NULL REFERENCES accounts(id),
     transaction_id UUID NOT NULL,
     amount BIGINT NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE holds (
     UNIQUE(account_id, transaction_id)
 );
 CREATE TABLE operations (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY default gen_random_uuid(),
     account_id UUID NOT NULL REFERENCES accounts(id),
     type operation_type NOT NULL,
     amount BIGINT NOT NULL,

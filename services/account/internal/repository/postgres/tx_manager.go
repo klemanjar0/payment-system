@@ -12,6 +12,10 @@ type TxManager struct {
 	pool *pgxpool.Pool
 }
 
+func NewTxManager(pool *pgxpool.Pool) *TxManager {
+	return &TxManager{pool: pool}
+}
+
 func (m *TxManager) ExecTx(ctx context.Context, fn func(domain.TxRepositories) error) error {
 	tx, err := m.pool.Begin(ctx)
 	if err != nil {
@@ -21,9 +25,9 @@ func (m *TxManager) ExecTx(ctx context.Context, fn func(domain.TxRepositories) e
 
 	q := sqlc.New(tx)
 	repos := domain.TxRepositories{
-		Accounts: &AccountRepository{queries: q},
-		//Holds:      &HoldRepository{queries: q},
-		//Operations: &TxOperationRepository{queries: q},
+		Accounts:   &AccountRepository{queries: q},
+		Holds:      &HoldRepository{queries: q},
+		Operations: &OperationRepository{queries: q},
 	}
 	if err := fn(repos); err != nil {
 		return err

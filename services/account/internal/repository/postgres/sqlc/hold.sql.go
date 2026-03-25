@@ -13,7 +13,6 @@ import (
 
 const createHold = `-- name: CreateHold :one
 INSERT INTO holds (
-        id,
         account_id,
         transaction_id,
         amount,
@@ -21,12 +20,11 @@ INSERT INTO holds (
         status,
         created_at
     )
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, account_id, transaction_id, amount, description, status, created_at, released_at
 `
 
 type CreateHoldParams struct {
-	ID            pgtype.UUID        `json:"id"`
 	AccountID     pgtype.UUID        `json:"account_id"`
 	TransactionID pgtype.UUID        `json:"transaction_id"`
 	Amount        int64              `json:"amount"`
@@ -37,7 +35,6 @@ type CreateHoldParams struct {
 
 func (q *Queries) CreateHold(ctx context.Context, arg CreateHoldParams) (Hold, error) {
 	row := q.db.QueryRow(ctx, createHold,
-		arg.ID,
 		arg.AccountID,
 		arg.TransactionID,
 		arg.Amount,
