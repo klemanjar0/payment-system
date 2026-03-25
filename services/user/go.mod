@@ -4,7 +4,7 @@ go 1.25.3
 
 require (
 	github.com/gofiber/fiber/v3 v3.0.0
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.1
 	github.com/klemanjar0/payment-system/generated/proto v0.0.0-20260211082744-c14ef7ea8db7
 	github.com/klemanjar0/payment-system/pkg v0.0.0
 	golang.org/x/crypto v0.48.0
@@ -36,13 +36,15 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/redis/go-redis/v9 v9.17.3
-	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
-	golang.org/x/net v0.49.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/net v0.50.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
 )
 
 replace github.com/klemanjar0/payment-system/pkg => ../../pkg
+
+replace github.com/klemanjar0/payment-system/generated/proto => ../../generated/proto

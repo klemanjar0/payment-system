@@ -11,7 +11,7 @@ services:
     volumes:
       - user-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user_service -d user_db"]
+      test: [ "CMD-SHELL", "pg_isready -U user_service -d user_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -27,7 +27,7 @@ services:
     volumes:
       - account-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U account_service -d account_db"]
+      test: [ "CMD-SHELL", "pg_isready -U account_service -d account_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -43,7 +43,7 @@ services:
     volumes:
       - transaction-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U transaction_service -d transaction_db"]
+      test: [ "CMD-SHELL", "pg_isready -U transaction_service -d transaction_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -53,19 +53,7 @@ services:
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  mongo-audit:
-    image: mongo:8
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo-audit-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -85,7 +73,7 @@ services:
     volumes:
       - kafka-data:/bitnami/kafka
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      test: [ "CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list" ]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -106,14 +94,10 @@ services:
       DB_NAME: user_db
       DB_SSL_MODE: disable
       KAFKA_BROKERS: kafka:9092
-      MONGO_URI: "mongodb://mongo-audit:27017"
-      MONGO_AUDIT_DB: audit
       REDIS_HOST: redis
       REDIS_PORT: "6379"
     depends_on:
       postgres-user:
-        condition: service_healthy
-      mongo-audit:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -169,4 +153,3 @@ volumes:
   account-db-data:
   transaction-db-data:
   kafka-data:
-  mongo-audit-data:

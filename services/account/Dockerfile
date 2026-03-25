@@ -9,6 +9,9 @@ COPY services/account/ ./services/account/
 COPY generated/ ./generated/
 COPY go.work go.work.sum ./
 
+# Remove workspace entries for services not included in this build
+RUN go work edit -dropuse ./services/user -dropuse ./services/transaction
+
 RUN cd services/account && go mod download
 RUN cd services/account && CGO_ENABLED=0 go build -o /bin/account ./cmd
 

@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS accounts;
+DROP TYPE IF EXISTS account_status;
+DROP TYPE IF EXISTS hold_status;
+DROP TYPE IF EXISTS operation_type;
+DROP TABLE IF EXISTS holds;
+DROP TABLE IF EXISTS operations;

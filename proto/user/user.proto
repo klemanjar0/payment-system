@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package user;
 
-option go_package = "github.com/klemanjar0/payment-system/proto/user";
-
 import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/klemanjar0/payment-system/proto/user";
 
 service UserService {
   // public

@@ -2,4 +2,174 @@ syntax = "proto3";
 
 package account;
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "github.com/klemanjar0/payment-system/proto/account";
+
+service AccountService {
+  rpc CreateAccount(CreateAccountRequest) returns (Account);
+  rpc GetAccount(GetAccountRequest) returns (Account);
+  rpc GetAccountsByUser(GetAccountsByUserRequest) returns (AccountList);
+  rpc GetBalance(GetBalanceRequest) returns (BalanceResponse);
+
+  // saga
+  rpc ValidateAccount(ValidateAccountRequest) returns (ValidateAccountResponse);
+  rpc HoldFunds(HoldFundsRequest) returns (HoldFundsResponse);
+  rpc ReleaseHold(ReleaseHoldRequest) returns (ReleaseHoldResponse);
+  rpc Credit(CreditRequest) returns (CreditResponse);
+  rpc Debit(DebitRequest) returns (DebitResponse);
+
+  // history
+  rpc GetOperations(GetOperationsRequest) returns (OperationList);
+}
+
+// === account ===
+
+message CreateAccountRequest {
+  string user_id  = 1;
+  string currency = 2;  // UAH, USD, EUR
+}
+
+message GetAccountRequest {
+  string account_id = 1;
+}
+
+message GetAccountsByUserRequest {
+  string user_id = 1;
+}
+
+message AccountList {
+  repeated Account accounts = 1;
+}
+
+message Account {
+  string                    id          = 1;
+  string                    user_id     = 2;
+  string                    currency    = 3;
+  int64                     balance     = 4; // check Amount
+  int64                     hold_amount = 5; // frozen
+  int64                     available   = 6; // balance - hold_amount
+  AccountStatus             status      = 7;
+  google.protobuf.Timestamp created_at  = 8;
+  google.protobuf.Timestamp updated_at  = 9;
+}
+
+enum AccountStatus {
+  ACCOUNT_STATUS_UNSPECIFIED = 0;
+  ACCOUNT_STATUS_ACTIVE      = 1;
+  ACCOUNT_STATUS_BLOCKED     = 2;
+  ACCOUNT_STATUS_CLOSED      = 3;
+}
+
+// === balance ===
+
+message GetBalanceRequest {
+  string account_id = 1;
+}
+
+message BalanceResponse {
+  string account_id  = 1;
+  int64  balance     = 2;
+  int64  hold_amount = 3;
+  int64  available   = 4;
+  string currency    = 5;
+}
+
+// === validation ===
+
+message ValidateAccountRequest {
+  string account_id      = 1;
+  int64  required_amount = 2; // optional, check money is enough
+}
+
+message ValidateAccountResponse {
+  bool          valid  = 1;
+  string        reason = 2; // if non valid
+  AccountStatus status = 3;
+}
+
+// === hold ===
+
+message HoldFundsRequest {
+  string account_id     = 1;
+  int64  amount         = 2;
+  string transaction_id = 3; // idempotancy key
+  string description    = 4;
+}
+
+message HoldFundsResponse {
+  string hold_id = 1;
+  bool   success = 2;
+  string error   = 3;
+}
+
+message ReleaseHoldRequest {
+  string account_id     = 1;
+  string transaction_id = 2;
+}
+
+message ReleaseHoldResponse {
+  bool   success = 1;
+  string error   = 2;
+}
+
+// === credit/debit ===
+
+message CreditRequest {
+  string account_id     = 1;
+  int64  amount         = 2;
+  string transaction_id = 3;
+  string description    = 4;
+}
+
+message CreditResponse {
+  bool   success     = 1;
+  int64  new_balance = 2;
+  string error       = 3;
+}
+
+message DebitRequest {
+  string account_id     = 1;
+  int64  amount         = 2;
+  string transaction_id = 3;
+  string description    = 4;
+  bool   from_hold      = 5; // remove from hold (for saga)
+}
+
+message DebitResponse {
+  bool   success     = 1;
+  int64  new_balance = 2;
+  string error       = 3;
+}
+
+// === operations history ===
+
+message GetOperationsRequest {
+  string account_id = 1;
+  int32  limit      = 2;
+  int32  offset     = 3;
+}
+
+message OperationList {
+  repeated Operation operations = 1;
+  int32              total      = 2;
+}
+
+message Operation {
+  string                    id             = 1;
+  string                    account_id     = 2;
+  OperationType             type           = 3;
+  int64                     amount         = 4;
+  int64                     balance_after  = 5;
+  string                    transaction_id = 6;
+  string                    description    = 7;
+  google.protobuf.Timestamp created_at     = 8;
+}
+
+enum OperationType {
+  OPERATION_TYPE_UNSPECIFIED  = 0;
+  OPERATION_TYPE_CREDIT       = 1; // income
+  OPERATION_TYPE_DEBIT        = 2; // outcome
+  OPERATION_TYPE_HOLD         = 3; // freeze
+  OPERATION_TYPE_HOLD_RELEASE = 4; // unfreeze
+}

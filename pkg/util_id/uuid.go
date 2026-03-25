@@ -16,6 +16,10 @@ func New() *UtilID {
 }
 
 func FromString(value string) *UtilID {
+	if value == "" {
+		return &UtilID{}
+	}
+
 	id, err := uuid.Parse(value)
 
 	if err != nil {
@@ -26,7 +30,7 @@ func FromString(value string) *UtilID {
 }
 
 func FromPg(value pgtype.UUID) *UtilID {
-	if !value.Valid {
+	if !value.Valid || value.String() == "" {
 		return &UtilID{}
 	}
 

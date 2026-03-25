@@ -14,6 +14,20 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  # psql -U account_service -h localhost account_db -p 5434
+
+  account-migrate:
+    image: migrate/migrate
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://account_service:account_service_pass@account-db:5432/account_db?sslmode=disable"
+      - "up"
+    volumes:
+      - ../../services/account/migrations:/migrations:ro
+    depends_on:
+      account-db:
+        condition: service_healthy
+    restart: on-failure
 
   account:
     build:
@@ -21,8 +35,10 @@ services:
       dockerfile: services/account/Dockerfile
     ports:
       - "50052:50052"
+      - "8081:8081"
     environment:
       GRPC_PORT: "50052"
+      HTTP_PORT: "8081"
       DB_HOST: account-db
       DB_PORT: "5432"
       DB_USER: account_service
@@ -30,9 +46,14 @@ services:
       DB_NAME: account_db
       DB_SSL_MODE: disable
       KAFKA_BROKERS: ""
+      PUBLIC_KEY_PATH: /keys/public-key.pem
+    volumes:
+      - ../../keys:/keys:ro
     depends_on:
       account-db:
         condition: service_healthy
+      account-migrate:
+        condition: service_completed_successfully
 
 volumes:
   account-db-data:

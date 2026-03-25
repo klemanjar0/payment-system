@@ -16,6 +16,10 @@ func (a Amount) ToMajor() float64 {
 	return float64(a) / 100
 }
 
+func (a Amount) ToInt() int64 {
+	return int64(a)
+}
+
 func (a Amount) String() string {
 	return fmt.Sprintf("%.2f", a.ToMajor())
 }

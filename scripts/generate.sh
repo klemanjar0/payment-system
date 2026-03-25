@@ -33,7 +33,7 @@ fi
 
 export PATH="${PATH}:$(go env GOPATH)/bin"
 
-rm -rf "${OUT_DIR}"
+find "${OUT_DIR}" -name "*.pb.go" -delete
 mkdir -p "${OUT_DIR}"
 
 for proto_file in $(find "${PROTO_DIR}" -name "*.proto"); do
