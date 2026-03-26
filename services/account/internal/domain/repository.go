@@ -28,6 +28,7 @@ type HoldRepository interface {
 type OperationRepository interface {
 	Create(ctx context.Context, op *Operation) error
 	GetByAccountID(ctx context.Context, accountID string, limit, offset int) ([]*Operation, int, error)
+	GetByTransactionIDAndType(ctx context.Context, accountID, transactionID string, opType OperationType) (*Operation, error)
 }
 
 // TxRepositories groups all repositories scoped to a single transaction.

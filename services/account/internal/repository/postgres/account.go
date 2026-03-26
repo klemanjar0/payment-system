@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/klemanjar0/payment-system/pkg/logger"
 	utilid "github.com/klemanjar0/payment-system/pkg/util_id"
 	"github.com/klemanjar0/payment-system/services/account/internal/domain"
@@ -12,12 +13,14 @@ import (
 )
 
 type AccountRepository struct {
+	pool    *pgxpool.Pool
 	queries *sqlc.Queries
 }
 
-func NewAccountRepository(queries *sqlc.Queries) *AccountRepository {
+func NewAccountRepository(pool *pgxpool.Pool) *AccountRepository {
 	return &AccountRepository{
-		queries: queries,
+		pool:    pool,
+		queries: sqlc.New(pool),
 	}
 }
 

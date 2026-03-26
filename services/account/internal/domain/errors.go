@@ -19,5 +19,7 @@ var (
 	ErrHoldNotActive     = errors.New("hold is not active")
 	ErrHoldAlreadyExists = errors.New("hold already exists for this transaction")
 
+	ErrOperationNotFound = errors.New("operation not found")
+
 	ErrInternal = errors.New("internal error")
 )

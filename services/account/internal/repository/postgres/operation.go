@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	utilid "github.com/klemanjar0/payment-system/pkg/util_id"
 	"github.com/klemanjar0/payment-system/services/account/internal/domain"
@@ -64,4 +66,26 @@ func (r *OperationRepository) GetByAccountID(
 	}
 
 	return result, int(total), nil
+}
+
+func (r *OperationRepository) GetByTransactionIDAndType(
+	ctx context.Context,
+	accountID, transactionID string,
+	opType domain.OperationType,
+) (*domain.Operation, error) {
+	row, err := r.queries.GetOperationByTransactionIDAndType(ctx, sqlc.GetOperationByTransactionIDAndTypeParams{
+		AccountID:     utilid.FromString(accountID).AsPgUUID(),
+		TransactionID: utilid.FromString(transactionID).AsPgUUID(),
+		Type:          sqlc.OperationType(opType),
+	})
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrOperationNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return domain.OperationFromSQLC(&row), nil
 }

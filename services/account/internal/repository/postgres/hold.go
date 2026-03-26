@@ -35,7 +35,12 @@ func (r *HoldRepository) Create(ctx context.Context, hold *domain.Hold) error {
 		Status:        sqlc.HoldStatusActive,
 		CreatedAt:     pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	})
-	return err
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *HoldRepository) GetByID(ctx context.Context, id string) (*domain.Hold, error) {
