@@ -5,7 +5,8 @@ DOCKER_COMPOSE_DIR = deployments/docker
 	run-user run-account run-transaction \
 	build-user build-account build-transaction \
 	migrate-up test \
-	generate-keys
+	generate-keys \
+	build-web-ui run-web-ui down-web-ui dev-web-ui
 
 # --- Proto ---
 proto:
@@ -64,6 +65,20 @@ run-transaction:
 
 down-transaction:
 	docker compose -f $(DOCKER_COMPOSE_DIR)/docker-compose.transaction.yaml down
+
+# --- web-ui ---
+dev-web-ui:
+	cd web-ui && npm install && npm run dev
+
+# --- Docker: web-ui ---
+build-web-ui:
+	docker compose -f $(DOCKER_COMPOSE_DIR)/docker-compose.web-ui.yaml build
+
+run-web-ui:
+	docker compose -f $(DOCKER_COMPOSE_DIR)/docker-compose.web-ui.yaml up -d
+
+down-web-ui:
+	docker compose -f $(DOCKER_COMPOSE_DIR)/docker-compose.web-ui.yaml down
 
 # --- Other ---
 migrate-up:

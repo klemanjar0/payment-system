@@ -1,0 +1,11 @@
+services:
+  web-ui:
+    build:
+      context: ../../web-ui
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    # Allows nginx to reach backend services running on the host machine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
