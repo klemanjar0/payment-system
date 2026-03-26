@@ -4,20 +4,28 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	pb "github.com/klemanjar0/payment-system/generated/proto/transaction"
+	"github.com/klemanjar0/payment-system/pkg/auth"
 	"github.com/klemanjar0/payment-system/pkg/config"
+	"github.com/klemanjar0/payment-system/pkg/fiberutil"
+	fiberMiddleware "github.com/klemanjar0/payment-system/pkg/fiberutil/middleware"
 	"github.com/klemanjar0/payment-system/pkg/grpcutil"
+	"github.com/klemanjar0/payment-system/pkg/httputil"
 	pkgkafka "github.com/klemanjar0/payment-system/pkg/kafka"
 	"github.com/klemanjar0/payment-system/pkg/logger"
 	pkgpostgres "github.com/klemanjar0/payment-system/pkg/postgres"
 	"github.com/klemanjar0/payment-system/services/transaction/internal/client"
 	grpcdelivery "github.com/klemanjar0/payment-system/services/transaction/internal/delivery/grpc"
-	kafkalayer "github.com/klemanjar0/payment-system/services/transaction/internal/kafka"
+	httpdelivery "github.com/klemanjar0/payment-system/services/transaction/internal/delivery/http"
+	"github.com/klemanjar0/payment-system/services/transaction/internal/domain"
+	txkafka "github.com/klemanjar0/payment-system/services/transaction/internal/kafka"
 	pgrepository "github.com/klemanjar0/payment-system/services/transaction/internal/repository/postgres"
 	usecase "github.com/klemanjar0/payment-system/services/transaction/internal/use_case"
 	"google.golang.org/grpc"
@@ -28,6 +36,12 @@ import (
 type noopCommandPublisher struct{}
 
 func (n *noopCommandPublisher) Publish(_ context.Context, _ string, _ any) error { return nil }
+
+// noopBlacklist never blacklists tokens (transaction service has no Redis).
+type noopBlacklist struct{}
+
+func (b *noopBlacklist) Blacklist(_ context.Context, _ string, _ time.Duration) error { return nil }
+func (b *noopBlacklist) IsBlacklisted(_ context.Context, _ string) (bool, error)      { return false, nil }
 
 func main() {
 	ctx := context.Background()
@@ -78,7 +92,7 @@ func main() {
 			Topic:   config.GetEnv("KAFKA_TRANSACTION_COMMANDS_TOPIC", "transaction-commands"),
 		})
 		defer kafkaCmdProducer.Close()
-		cmdPub = kafkalayer.NewPublisher(kafkaCmdProducer)
+		cmdPub = txkafka.NewPublisher(kafkaCmdProducer)
 	} else {
 		logger.Info("KAFKA_BROKERS not set, using noop command publisher")
 		cmdPub = &noopCommandPublisher{}
@@ -91,6 +105,38 @@ func main() {
 	createTransferUC := usecase.NewCreateTransferUseCase(txRepo, accountClient, userClient, cmdPub)
 	getTransactionUC := usecase.NewGetTransactionUseCase(txRepo)
 	getTransactionsByAccountUC := usecase.NewGetTransactionsByAccountUseCase(txRepo)
+
+	// --- JWT token validator (verify-only, uses public key) ---
+	publicKeyPath := config.GetEnv("PUBLIC_KEY_PATH", "keys/public-key.pem")
+	publicKey, err := auth.LoadPublicKeyFromFile(publicKeyPath)
+	if err != nil {
+		logger.Fatal("failed to load public key", "err", err, "path", publicKeyPath)
+	}
+	tokenValidator, err := auth.NewTokenValidator(auth.Config{PublicKey: publicKey})
+	if err != nil {
+		logger.Fatal("failed to create token validator", "err", err)
+	}
+
+	// --- HTTP error mappings ---
+	httputil.RegisterErrorMapping(domain.ErrTransactionNotFound, http.StatusNotFound)
+	httputil.RegisterErrorMapping(domain.ErrTransactionExists, http.StatusConflict)
+	httputil.RegisterErrorMapping(domain.ErrSameAccount, http.StatusBadRequest)
+	httputil.RegisterErrorMapping(domain.ErrInvalidAmount, http.StatusBadRequest)
+	httputil.RegisterErrorMapping(domain.ErrInvalidCurrency, http.StatusBadRequest)
+	httputil.RegisterErrorMapping(domain.ErrAccountNotFound, http.StatusNotFound)
+	httputil.RegisterErrorMapping(domain.ErrAccountNotActive, http.StatusUnprocessableEntity)
+	httputil.RegisterErrorMapping(domain.ErrCurrencyMismatch, http.StatusUnprocessableEntity)
+	httputil.RegisterErrorMapping(domain.ErrUserNotActive, http.StatusForbidden)
+
+	// --- HTTP server (Fiber) ---
+	app := fiberutil.NewApp()
+	app.Use(fiberMiddleware.Recovery())
+	app.Use(fiberMiddleware.Logging())
+
+	httpHandler := httpdelivery.NewTransactionHTTPHandler(createTransferUC, getTransactionUC, getTransactionsByAccountUC)
+	httpdelivery.RegisterRoutes(app, httpHandler, fiberMiddleware.Auth(tokenValidator, &noopBlacklist{}))
+
+	httpPort := config.GetEnv("HTTP_PORT", "8082")
 
 	// --- gRPC server ---
 	grpcPort := config.GetEnv("GRPC_PORT", "50053")
@@ -121,10 +167,10 @@ func main() {
 		})
 		defer accountEventsConsumer.Close()
 
-		orchestrator := kafkalayer.NewSagaOrchestrator(
+		orchestrator := txkafka.NewSagaOrchestrator(
 			accountEventsConsumer,
 			txRepo,
-			kafkalayer.NewPublisher(kafkaCmdProducer),
+			txkafka.NewPublisher(kafkaCmdProducer),
 		)
 
 		go func() {
@@ -141,7 +187,15 @@ func main() {
 		}
 	}()
 
+	go func() {
+		logger.Info("transaction http service started", "port", httpPort)
+		if err := app.Listen(":" + httpPort); err != nil {
+			logger.Fatal("http server failed", "err", err)
+		}
+	}()
+
 	<-quit
 	logger.Info("shutting down transaction service")
 	srv.GracefulStop()
+	_ = app.Shutdown()
 }

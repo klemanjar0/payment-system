@@ -4,20 +4,27 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	pb "github.com/klemanjar0/payment-system/generated/proto/account"
+	"github.com/klemanjar0/payment-system/pkg/auth"
 	"github.com/klemanjar0/payment-system/pkg/config"
+	"github.com/klemanjar0/payment-system/pkg/fiberutil"
+	fiberMiddleware "github.com/klemanjar0/payment-system/pkg/fiberutil/middleware"
 	"github.com/klemanjar0/payment-system/pkg/grpcutil"
+	"github.com/klemanjar0/payment-system/pkg/httputil"
 	pkgkafka "github.com/klemanjar0/payment-system/pkg/kafka"
 	"github.com/klemanjar0/payment-system/pkg/logger"
 	pkgpostgres "github.com/klemanjar0/payment-system/pkg/postgres"
 	grpcdelivery "github.com/klemanjar0/payment-system/services/account/internal/delivery/grpc"
-	kafkadeliv "github.com/klemanjar0/payment-system/services/account/internal/kafka"
-	kafkapub "github.com/klemanjar0/payment-system/services/account/internal/kafka"
+	httpdelivery "github.com/klemanjar0/payment-system/services/account/internal/delivery/http"
+	"github.com/klemanjar0/payment-system/services/account/internal/domain"
+	acckafka "github.com/klemanjar0/payment-system/services/account/internal/kafka"
 	pgrepository "github.com/klemanjar0/payment-system/services/account/internal/repository/postgres"
 	usecase "github.com/klemanjar0/payment-system/services/account/internal/use_case"
 	"google.golang.org/grpc"
@@ -27,6 +34,12 @@ import (
 type noopEventPublisher struct{}
 
 func (n *noopEventPublisher) Publish(_ context.Context, _ string, _ any) error { return nil }
+
+// noopBlacklist never blacklists tokens (account service has no Redis).
+type noopBlacklist struct{}
+
+func (b *noopBlacklist) Blacklist(_ context.Context, _ string, _ time.Duration) error { return nil }
+func (b *noopBlacklist) IsBlacklisted(_ context.Context, _ string) (bool, error)      { return false, nil }
 
 func main() {
 	ctx := context.Background()
@@ -58,7 +71,7 @@ func main() {
 			Topic:   config.GetEnv("KAFKA_ACCOUNT_EVENTS_TOPIC", "account-events"),
 		})
 		defer producer.Close()
-		eventPub = kafkapub.NewPublisher(producer)
+		eventPub = acckafka.NewPublisher(producer)
 	} else {
 		logger.Info("KAFKA_BROKERS not set, using noop event publisher")
 		eventPub = &noopEventPublisher{}
@@ -82,6 +95,34 @@ func main() {
 	executeHoldUC := usecase.NewExecuteHoldUseCase(txManager, eventPub)
 	releaseHoldUC := usecase.NewReleaseHoldUseCase(txManager, eventPub)
 	creditUC := usecase.NewCreditUseCase(txManager, eventPub)
+
+	// --- JWT token validator (verify-only, uses public key) ---
+	publicKeyPath := config.GetEnv("PUBLIC_KEY_PATH", "keys/public-key.pem")
+	publicKey, err := auth.LoadPublicKeyFromFile(publicKeyPath)
+	if err != nil {
+		logger.Fatal("failed to load public key", "err", err, "path", publicKeyPath)
+	}
+	tokenValidator, err := auth.NewTokenValidator(auth.Config{PublicKey: publicKey})
+	if err != nil {
+		logger.Fatal("failed to create token validator", "err", err)
+	}
+
+	// --- HTTP error mappings ---
+	httputil.RegisterErrorMapping(domain.ErrAccountNotFound, http.StatusNotFound)
+	httputil.RegisterErrorMapping(domain.ErrAccountExists, http.StatusConflict)
+	httputil.RegisterErrorMapping(domain.ErrInvalidCurrency, http.StatusBadRequest)
+	httputil.RegisterErrorMapping(domain.ErrAccountNotActive, http.StatusForbidden)
+	httputil.RegisterErrorMapping(domain.ErrInsufficientFunds, http.StatusUnprocessableEntity)
+
+	// --- HTTP server (Fiber) ---
+	app := fiberutil.NewApp()
+	app.Use(fiberMiddleware.Recovery())
+	app.Use(fiberMiddleware.Logging())
+
+	httpHandler := httpdelivery.NewAccountHTTPHandler(createAccountUC, getAccountUC, getAccountsByUserUC)
+	httpdelivery.RegisterRoutes(app, httpHandler, fiberMiddleware.Auth(tokenValidator, &noopBlacklist{}))
+
+	httpPort := config.GetEnv("HTTP_PORT", "8081")
 
 	// --- gRPC server ---
 	grpcPort := config.GetEnv("GRPC_PORT", "50052")
@@ -112,7 +153,7 @@ func main() {
 		})
 		defer sagaConsumer.Close()
 
-		sagaHandler := kafkadeliv.NewSagaConsumer(sagaConsumer, placeHoldUC, executeHoldUC, releaseHoldUC, creditUC)
+		sagaHandler := acckafka.NewSagaConsumer(sagaConsumer, placeHoldUC, executeHoldUC, releaseHoldUC, creditUC)
 
 		go func() {
 			sagaHandler.Run(ctx)
@@ -128,7 +169,16 @@ func main() {
 		}
 	}()
 
+	go func() {
+		logger.Info("account http service started", "port", httpPort)
+		if err := app.Listen(":" + httpPort); err != nil {
+			logger.Fatal("http server failed", "err", err)
+		}
+	}()
+
 	<-quit
 	logger.Info("shutting down account service")
 	srv.GracefulStop()
+	_ = app.Shutdown()
+
 }
