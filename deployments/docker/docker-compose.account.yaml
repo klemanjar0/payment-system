@@ -67,6 +67,8 @@ services:
       KAFKA_ACCOUNT_EVENTS_TOPIC: account-events
       KAFKA_TRANSACTION_COMMANDS_TOPIC: transaction-commands
       KAFKA_GROUP_ID: account-service
+      DEV_MODE: "true"
+    restart: on-failure
     depends_on:
       account-db:
         condition: service_healthy

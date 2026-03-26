@@ -78,6 +78,46 @@ services:
       timeout: 10s
       retries: 5
 
+  # --- Migrations ---
+  user-migrate:
+    image: migrate/migrate
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://user_service:user_service_pass@postgres-user:5432/user_db?sslmode=disable"
+      - "up"
+    volumes:
+      - ../../services/user/migrations:/migrations:ro
+    depends_on:
+      postgres-user:
+        condition: service_healthy
+    restart: on-failure
+
+  account-migrate:
+    image: migrate/migrate
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://account_service:account_service_pass@postgres-account:5432/account_db?sslmode=disable"
+      - "up"
+    volumes:
+      - ../../services/account/migrations:/migrations:ro
+    depends_on:
+      postgres-account:
+        condition: service_healthy
+    restart: on-failure
+
+  transaction-migrate:
+    image: migrate/migrate
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://transaction_service:transaction_service_pass@postgres-transaction:5432/transaction_db?sslmode=disable"
+      - "up"
+    volumes:
+      - ../../services/transaction/migrations:/migrations:ro
+    depends_on:
+      postgres-transaction:
+        condition: service_healthy
+    restart: on-failure
+
   # --- Services ---
   user:
     build:
@@ -96,13 +136,17 @@ services:
       KAFKA_BROKERS: kafka:9092
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      DEV_MODE: "false"
     depends_on:
       postgres-user:
         condition: service_healthy
+      user-migrate:
+        condition: service_completed_successfully
       kafka:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: on-failure
 
   account:
     build:
@@ -119,12 +163,18 @@ services:
       DB_NAME: account_db
       DB_SSL_MODE: disable
       KAFKA_BROKERS: kafka:9092
-      USER_SERVICE_ADDR: user:50051
+      KAFKA_ACCOUNT_EVENTS_TOPIC: account-events
+      KAFKA_TRANSACTION_COMMANDS_TOPIC: transaction-commands
+      KAFKA_GROUP_ID: account-service
+      DEV_MODE: "false"
     depends_on:
       postgres-account:
         condition: service_healthy
+      account-migrate:
+        condition: service_completed_successfully
       kafka:
         condition: service_healthy
+    restart: on-failure
 
   transaction:
     build:
@@ -141,12 +191,24 @@ services:
       DB_NAME: transaction_db
       DB_SSL_MODE: disable
       KAFKA_BROKERS: kafka:9092
+      KAFKA_ACCOUNT_EVENTS_TOPIC: account-events
+      KAFKA_TRANSACTION_COMMANDS_TOPIC: transaction-commands
+      KAFKA_GROUP_ID: transaction-service
       ACCOUNT_SERVICE_ADDR: account:50052
+      USER_SERVICE_ADDR: user:50051
+      DEV_MODE: "false"
     depends_on:
       postgres-transaction:
         condition: service_healthy
+      transaction-migrate:
+        condition: service_completed_successfully
       kafka:
         condition: service_healthy
+      account:
+        condition: service_started
+      user:
+        condition: service_started
+    restart: on-failure
 
 volumes:
   user-db-data:

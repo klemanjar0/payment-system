@@ -7,7 +7,7 @@ import (
 	"github.com/klemanjar0/payment-system/pkg/logger"
 	"github.com/klemanjar0/payment-system/pkg/money"
 	"github.com/klemanjar0/payment-system/services/account/internal/domain"
-	"github.com/klemanjar0/payment-system/services/account/internal/events"
+	"github.com/klemanjar0/payment-system/services/account/events"
 )
 
 type PlaceHoldUseCaseParams struct {
@@ -72,6 +72,17 @@ func (uc *PlaceHoldUseCase) Execute(
 
 	if err != nil {
 		logger.Error("PlaceHold failed", "err", err, "account_id", params.AccountID, "transaction_id", params.TransactionID)
+		if errors.Is(err, domain.ErrInsufficientFunds) ||
+			errors.Is(err, domain.ErrAccountNotFound) ||
+			errors.Is(err, domain.ErrAccountNotActive) {
+			if pubErr := uc.eventPublisher.Publish(ctx, events.HoldFailed, events.HoldFailedPayload{
+				AccountID:     params.AccountID,
+				TransactionID: params.TransactionID,
+				Reason:        err.Error(),
+			}); pubErr != nil {
+				logger.Error("PlaceHold: failed to publish hold.failed event", "err", pubErr, "transaction_id", params.TransactionID)
+			}
+		}
 		return err
 	}
 

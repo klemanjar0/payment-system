@@ -8,7 +8,7 @@ import (
 	"github.com/klemanjar0/payment-system/pkg/logger"
 	"github.com/klemanjar0/payment-system/pkg/money"
 	"github.com/klemanjar0/payment-system/services/account/internal/domain"
-	"github.com/klemanjar0/payment-system/services/account/internal/events"
+	"github.com/klemanjar0/payment-system/services/account/events"
 )
 
 type CreditUseCaseParams struct {

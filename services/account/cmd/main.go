@@ -16,7 +16,7 @@ import (
 	"github.com/klemanjar0/payment-system/pkg/logger"
 	pkgpostgres "github.com/klemanjar0/payment-system/pkg/postgres"
 	grpcdelivery "github.com/klemanjar0/payment-system/services/account/internal/delivery/grpc"
-	kafkadeliv "github.com/klemanjar0/payment-system/services/account/internal/delivery/kafka"
+	kafkadeliv "github.com/klemanjar0/payment-system/services/account/internal/kafka"
 	kafkapub "github.com/klemanjar0/payment-system/services/account/internal/kafka"
 	pgrepository "github.com/klemanjar0/payment-system/services/account/internal/repository/postgres"
 	usecase "github.com/klemanjar0/payment-system/services/account/internal/use_case"
